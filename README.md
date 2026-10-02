@@ -1,300 +1,406 @@
-# FinSight — Real-Time Banking Fraud & Customer Intelligence Platform
+# FinSight — Banking Data Engineering & Fraud Analytics Platform
 
-An end-to-end big data platform for a retail bank, integrating ten technologies across
-streaming ingestion, distributed storage, real-time and batch processing, three database
-paradigms, data blending and executive reporting.
+An end-to-end big data engineering project for **NovaCrest Bank**, integrating streaming ingestion, distributed storage, batch and stream processing, multiple database paradigms, data blending, and business intelligence.
 
-Built solo. Processes **1.55 million transactions** through Kafka at ~1,000 msg/sec, scores
-fraud in live micro-batches, and surfaces the results in three Power BI dashboards.
+FinSight explores four banking use cases:
 
----
+- Real-time transaction fraud flagging
+- Customer 360 and risk analytics
+- Compliance reporting and account dormancy analysis
+- Fraud-ring detection using graph relationships
 
-## Dashboards
+**Built by:** Venkata Pramod
 
-**Fraud Alert Board** — live flagged-transaction feed, fraud rate, exposure value, and false
-positive rate measured against the legacy baseline.
+## 1. Project Overview
+
+Financial institutions need reliable data pipelines to process large transaction volumes, integrate customer information, identify suspicious activity, and provide timely reporting.
+
+FinSight demonstrates a data platform that combines transaction streaming, distributed processing, database integration, and Power BI reporting using a synthetic mobile-money transaction dataset and synthetic customer profiles.
+
+### Business problems addressed
+
+| Use case | Implementation |
+|---|---|
+| Transaction fraud detection | Kafka ingestion and Spark Structured Streaming rule-based scoring |
+| Customer 360 | Customer profiles, risk and churn outputs, and Power BI reporting |
+| Compliance reporting | Spark SQL aggregations and reporting outputs |
+| Fraud-ring analysis | Neo4j account–transaction graph and Cypher queries |
+
+**Project scope:** This is an educational portfolio project using synthetic data. Its rules and metrics are not validated for real-world banking deployment.
+
+## 2. Key Features
+
+- Kafka-based transaction ingestion and event streaming.
+- HDFS data lake storage using Parquet.
+- Spark Structured Streaming for fraud flagging and churn signals.
+- Spark batch processing for risk and customer lifetime value (CLV) scoring.
+- Hive tables and SQL-based reporting.
+- MongoDB customer profile storage.
+- Neo4j graph modelling for relationship analysis.
+- Alteryx workflows for data blending.
+- Power BI dashboards for fraud alerts, customer analytics, and risk reporting.
+
+## 3. Technology Stack
+
+| Layer | Technology | Purpose |
+|---|---|---|
+| Streaming ingestion | Apache Kafka | Transaction event ingestion and topic-based routing |
+| Distributed storage | HDFS | Data lake storage |
+| File format | Apache Parquet | Structured, partitioned data storage |
+| Stream processing | Spark Structured Streaming | Fraud flagging and churn signals |
+| Batch processing | Apache Spark | Risk and CLV scoring |
+| SQL analytics | Spark SQL | Compliance, customer summary, and dormancy reports |
+| Data warehouse | Apache Hive | External tables, fraud views, and summary outputs |
+| Document database | MongoDB | Customer KYC profiles |
+| Graph database | Neo4j | Account and transaction relationships |
+| Data blending | Alteryx | Integration and transformation workflows |
+| Business intelligence | Power BI | Interactive dashboards |
+
+## 4. Architecture and Data Flow
+
+```text
+          Synthetic Transactions CSV
+                     |
+                     v
+               Apache Kafka
+                     |
+          +----------+-----------+
+          |          |           |
+          v          v           v
+      Fraud       Churn       HDFS Sink
+      Scoring     Signals     / Parquet
+          |          |           |
+          v          v           v
+     Flagged      HDFS       Hive / Spark SQL
+     Events                  Batch Analytics
+                                 |
+             +-------------------+
+             |
+      +------+------+
+      |             |
+      v             v
+   MongoDB         Neo4j
+   Customer        Account-
+   Profiles        Transaction Graph
+      |             |
+      +------+------+
+             |
+             v
+          Alteryx
+             |
+             v
+          Power BI
+       Three Dashboards
+```
+
+The diagram represents the intended platform flow. Exact integrations and execution requirements should be checked against the scripts and service configuration before reproducing the environment.
+
+## 5. Dashboard Screenshots
+
+### Fraud Alert Board
+
+Shows the transaction fraud-flagging outputs, exposure indicators, and fraud-related metrics.
 
 ![Fraud Alert Board](images/dashboard-1-fraud-alert-board.png)
 
-**Customer 360** — risk and churn scoring across 10,000 customer profiles, segment
-distribution, channel heatmap, CLV tier breakdown.
+### Customer 360
+
+Presents customer segments, risk and churn indicators, and profile-related analytics.
 
 ![Customer 360](images/dashboard-2-customer-360.png)
 
-**Risk & Compliance** — fraud rate trend against a target threshold, volume by transaction
-type, compliance summary and dormancy reporting.
+### Risk and Compliance
+
+Presents transaction trends, risk indicators, compliance summaries, and dormancy reporting.
 
 ![Risk and Compliance](images/dashboard-3-risk-compliance.png)
 
----
+The dashboards are based on the project outputs and should be interpreted in light of the data limitations described below.
 
-## Stack
+## 6. Dataset and Data Quality
 
-| Layer | Technology | What it does here |
-|---|---|---|
-| Streaming ingestion | **Apache Kafka** | 3 topics — `txn-raw` (3 partitions), `txn-flagged`, `txn-churn` |
-| Distributed storage | **HDFS** | Data lake; Parquet partitioned by hourly step |
-| Warehouse | **Apache Hive** | External transaction table, fraud view, pre-aggregated summary mart |
-| Document store | **MongoDB** | 10,000 customer KYC profiles, compound-indexed |
-| Graph database | **Neo4j** | Account–transaction graph for fraud-ring detection |
-| Stream processing | **Spark Structured Streaming** | Two concurrent jobs: fraud scoring and churn detection |
-| Batch processing | **Spark Core** | Nightly composite risk scoring and CLV scoring (cron-scheduled) |
-| SQL analytics | **Spark SQL** | Compliance aggregation, customer fraud summary, dormancy report |
-| Data blending | **Alteryx** | Joins Hive and MongoDB outputs, engineers composite features |
-| Visualisation | **Power BI** | Three dashboard pages, custom DAX measures |
+### Transaction dataset
 
-## Architecture
+The primary transaction dataset follows the PaySim synthetic financial transaction schema. The full transaction CSV is not included in this repository.
 
-```
-Transactions.csv (1.55M rows)
-        │
-        ▼
-    Apache Kafka ──── txn-raw (3 partitions)
-        │
-        ├─── Spark Streaming ── fraud rule scoring ──────▶ txn-flagged
-        ├─── Spark Streaming ── 24h windowed churn ──────▶ txn-churn + HDFS
-        └─── Kafka Connect HDFS Sink ── Parquet by step
-        │
-        ▼
-      HDFS  /finsight/{raw,processed,reference,exports}
-        │
-        ├─── Hive        external table · fraud view · summary mart
-        ├─── Spark Core  risk scoring · CLV scoring
-        └─── Spark SQL   compliance · fraud summary · dormancy
-        │
-   MongoDB (profiles)          Neo4j (fraud graph)
-        │                            │
-        └──────────▶ Alteryx ◀───────┘
-                        │
-                        ▼
-                    Power BI
-```
-
----
-
-## Dataset
-
-### `Transactions.csv` — primary transaction feed *(not included; see below)*
-
-Synthetic mobile money transactions in the **PaySim** schema. PaySim is a public agent-based
-simulator built on aggregated logs from a real mobile money service, widely used in fraud
-research because it carries ground-truth fraud labels that production banking data cannot
-share.
-
-| Property | Value |
+| Property | Reported value |
 |---|---|
 | Rows | 1,550,448 |
 | Columns | 11 |
-| File size | 121 MB |
-| Time span | 154 steps (1 step = 1 hour, ≈ 6.4 simulated days) |
-| Labelled fraud | 1,754 rows (0.113%) |
-| Distinct `nameOrig` | 1,549,889 |
+| File size | Approximately 121 MB |
+| Simulated time steps | 154 |
+| Labelled fraud records | 1,754 |
+| Labelled fraud proportion | Approximately 0.113% |
 
-**Schema**
+The dataset contains transaction types, amounts, origin and destination identifiers, account balances, and fraud labels.
 
-| Column | Type | Description |
-|---|---|---|
-| `step` | int | Hourly time step |
-| `type` | string | `CASH_IN` · `CASH_OUT` · `DEBIT` · `PAYMENT` · `TRANSFER` |
-| `amount` | double | Transaction amount |
-| `nameOrig` | string | Originating account (`C` = customer) |
-| `oldbalanceOrg` / `newbalanceOrig` | double | Sender balance before / after |
-| `nameDest` | string | Destination account (`C` customer, `M` merchant) |
-| `oldbalanceDest` / `newbalanceDest` | double | Recipient balance before / after |
-| `isFraud` | int | Ground-truth fraud label |
-| `isFlaggedFraud` | int | System-flagged large transfer |
+To reproduce the transaction-processing stages, obtain a compatible PaySim-format dataset from its authorized distribution source and place it at:
 
-**Distribution**
+`data/Transactions.csv`
 
-| Type | Count | Volume (USD) | Fraud | Fraud rate |
-|---|---|---|---|---|
-| CASH_OUT | 550,460 | 102.26 bn | 884 | 0.1606% |
-| PAYMENT | 521,456 | 6.22 bn | 0 | — |
-| CASH_IN | 339,514 | 58.08 bn | 0 | — |
-| TRANSFER | 128,472 | 83.30 bn | 870 | 0.6772% |
-| DEBIT | 10,546 | 0.06 bn | 0 | — |
+Confirm the file's schema and the right to use and redistribute it before running the pipeline.
 
-### Characteristics that shaped the implementation
+### Customer profiles
 
-These four properties drove most of the engineering decisions in this repo:
+`data/novacrest_customers.json` contains synthetic customer profile records used in the MongoDB component.
 
-1. **Fraud occurs only in TRANSFER and CASH_OUT.** The other three types carry no labelled
-   fraud at all — which is why the streaming rule filters on those two types before anything
-   else.
+The profiles include fields such as customer ID, segment, products, KYC status, risk score, churn probability, and preferred channel.
 
-2. **Almost every sender is unique.** 1,549,889 distinct `nameOrig` values across 1,550,448
-   rows means a customer typically appears once as a sender. This breaks any aggregation that
-   assumes repeat behaviour per account, and it forced two deliberate design changes (see
-   *Design decisions* below).
+### Neo4j graph data
 
-3. **Severe class imbalance at 0.113%.** Accuracy is meaningless at this ratio — a model
-   predicting "never fraud" scores 99.89%. Precision, recall and false-positive rate are
-   reported instead.
+The `data/` directory contains CSV files for graph nodes and relationships:
 
-4. **Destination balances are frequently zero**, including for legitimate merchant payments.
-   The account-emptying fraud rule keys on this field, which is the dominant source of its
-   false positives.
+- `neo4j_accounts_nodes.csv`
+- `neo4j_transaction_nodes.csv`
+- `neo4j_sent_rels.csv`
+- `neo4j_received_rels.csv`
 
-### `novacrest_customers.json` — customer profiles *(included, `data/`)*
+The graph represents accounts connected through transactions, allowing relationship-based analysis.
 
-10,000 synthetic KYC records loaded into MongoDB: `customerId`, demographics, `segment`,
-`products[]`, `kyc_status`, `risk_score`, `churn_probability`, `preferred_channel`.
+### Data quality considerations
 
-Segments: Standard 4,497 · Basic 2,464 · Premium 1,528 · Student 983 · Private Banking 528.
+The transaction labels are highly imbalanced, and most origin account identifiers appear only once. The synthetic customer profiles were generated independently of the transaction account identifiers.
 
-### Neo4j graph CSVs *(included, `data/`)*
+Consequently, customer joins and behaviour-based signals have important limitations. These issues should be considered when interpreting fraud, churn, and customer risk outputs.
 
-499 account nodes, 1,554 transaction nodes, 1,554 `SENT` and 1,554 `RECEIVED_BY` edges.
-Model: `(Account)-[:SENT]->(Transaction)-[:RECEIVED_BY]->(Account)` — transactions are
-first-class nodes so `amount`, `step` and `isFraud` stay queryable along the path.
+## 7. Setup and Execution
 
-### Getting the transaction file
+### Prerequisites
 
-PaySim-format data is publicly available (Kaggle: *Synthetic Financial Datasets For Fraud
-Detection*). Place it at `data/Transactions.csv`. Every figure in this README comes from the
-1,550,448-row extract described above.
+The existing project documentation identifies the following environment components:
 
----
+- Python 3.10 or later
+- Hadoop 3.x and HDFS
+- Apache Kafka
+- Apache Spark 3.5.x
+- Hive metastore
+- MongoDB
+- Neo4j
+- Alteryx for the supplied workflows
+- Power BI Desktop for the supplied report
 
-## Repository layout
+The components may require separate configuration. Exact compatibility, Kafka connector dependencies, environment variables, and service startup order must be verified for your installation.
 
-```
-├── code/
-│   ├── kafka/
-│   │   ├── producer.py                   # CSV → Kafka JSON, rate-limited to ~1,000 msg/sec
-│   │   └── raw-hdfs-sink.properties      # Kafka Connect HDFS Sink, Parquet by step
-│   ├── spark/
-│   │   ├── load_transactions.py          # CSV → HDFS Parquet
-│   │   ├── fraud_streaming.py            # Real-time fraud scoring + per-batch metrics
-│   │   ├── compute_customer_baseline.py  # Per-customer historical baseline
-│   │   ├── churn_streaming.py            # 24h windowed churn detection, 4 signals
-│   │   ├── risk_scoring.py               # Nightly composite risk score
-│   │   ├── clv_scoring.py                # Customer lifetime value
-│   │   └── spark_sql_jobs.py             # --mode compliance | customer_summary | dormancy
-│   ├── sql/                              # Hive DDL, fraud view, CLV table
-│   ├── neo4j/neo4j_loader.py             # Graph loader + fraud-ring Cypher
-│   ├── false_positive_check.py           # Rule precision measurement
-│   ├── check_overlap.py                  # ID-join diagnostic
-│   ├── crontab.txt                       # Batch schedule
-│   └── extra/                            # Exploratory work not in the final pipeline
-├── data/                                 # Neo4j CSVs + customer profiles
-├── alteryx/                              # 2 workflows (.yxmd) + their outputs
-├── images/                               # Dashboard screenshots
-└── docs/                                 # 61-page build report with verified outputs
-```
-
----
-
-## Running it
-
-Requires Hadoop 3.x, Kafka, Spark 3.5.x, Hive metastore, MongoDB, Neo4j, Python 3.10+.
+### Step 1: Clone the repository
 
 ```bash
-# Ingestion
-kafka-topics.sh --create --topic txn-raw --partitions 3 --replication-factor 1 \
-  --bootstrap-server localhost:9092          # repeat for txn-flagged, txn-churn
+git clone https://github.com/venkatapramod/finsight-data-platform.git
+cd finsight-data-platform
+```
+
+### Step 2: Prepare the transaction data
+
+Obtain the compatible transaction CSV and place it at:
+
+```text
+data/Transactions.csv
+```
+
+The full transaction file is intentionally not included in the repository.
+
+### Step 3: Configure the services
+
+Start and configure the required Kafka, Hadoop/HDFS, Spark, Hive, MongoDB, and Neo4j services.
+
+Ensure that the configured addresses, ports, credentials, and data paths match those expected by the project scripts.
+
+### Step 4: Create Kafka topics
+
+The documented ingestion design uses `txn-raw`, `txn-flagged`, and `txn-churn`.
+
+```bash
+kafka-topics.sh --create \
+  --topic txn-raw \
+  --partitions 3 \
+  --replication-factor 1 \
+  --bootstrap-server localhost:9092
+```
+
+Create the other topics using the same approach, checking first whether they already exist.
+
+### Step 5: Run processing jobs
+
+The following commands are drawn from the original project documentation. Verify each script path, its arguments, and required connector JARs before execution.
+
+```bash
+# Transaction ingestion
 python code/kafka/producer.py --quiet
+
+# Batch data loading
 spark-submit code/spark/load_transactions.py
 
-# Streaming (two concurrent jobs)
-spark-submit --jars <kafka jars> code/spark/fraud_streaming.py
-spark-submit code/spark/compute_customer_baseline.py
-spark-submit --jars <kafka jars> code/spark/churn_streaming.py
+# Streaming fraud processing
+spark-submit --jars <kafka-jars> \
+  code/spark/fraud_streaming.py
 
-# Batch — scheduled nightly via cron (see code/crontab.txt)
-spark-submit code/spark/risk_scoring.py
-spark-submit code/spark/clv_scoring.py
-spark-submit code/spark/spark_sql_jobs.py --mode compliance
-spark-submit code/spark/spark_sql_jobs.py --mode customer_summary
-spark-submit code/spark/spark_sql_jobs.py --mode dormancy
+# Customer baseline
+spark-submit \
+  code/spark/compute_customer_baseline.py
 
-# Databases
-spark-sql -f code/sql/hive_ddl.sql
-spark-sql -f code/sql/fraud_view.sql
-mongoimport --db finsight --collection customers \
-  --file data/novacrest_customers.json --jsonArray
-NEO4J_PASSWORD='<password>' python code/neo4j/neo4j_loader.py
+# Churn processing
+spark-submit --jars <kafka-jars> \
+  code/spark/churn_streaming.py
 ```
 
----
-
-## Design decisions
-
-Each of these is a reasoned departure from the naive implementation, driven by the dataset
-characteristics above.
-
-**Fixed reference scales instead of max-normalisation in risk scoring.** Because nearly every
-account appears once, normalising each factor by the in-batch maximum collapses almost all
-customers onto identical scores and makes the lowest risk tier mathematically unreachable.
-Factors are normalised against fixed business-meaningful scales instead: 5+ transactions, the
-$200,000 large-transfer threshold, CASH_OUT proportion, 5+ distinct counterparties. Result:
-a genuine spread across Low 692,897 / Medium 647,544 / High 209,448.
-
-**Dormancy counts activity on both sides of the ledger.** A sender-only count leaves almost no
-account meeting the "5 prior transactions" threshold, returning an empty report. Real accounts
-are active inbound and outbound, so `nameOrig` and `nameDest` occurrences are combined.
-
-**Percentile ranking for CLV components.** Ranking each customer against the population rather
-than against the single largest account lets scores span the full 0–1 range.
-
-**Low-balance churn signal uses a windowed count, not strict consecutiveness.** True
-consecutive-order enforcement requires per-customer sequence state
-(`flatMapGroupsWithState` or an ordered session window). The windowed approximation captures
-the same intent — sustained low balance rather than a momentary dip — at a fraction of the
-complexity.
-
----
-
-## Results
-
-| Metric | Value |
-|---|---|
-| Producer throughput | 999.8 msg/sec (50K records) · 989.7 msg/sec (200K records) |
-| Live streaming run | 200,000 records consumed, 989 flagged, 0.4945% fraud rate |
-| HDFS landing | Parquet across 154 step partitions |
-| Risk tiers | Low 692,897 · Medium 647,544 · High 209,448 |
-| CLV tiers | At Risk 1,535,520 · Growth Potential 14,356 · High Value 13 |
-| Dormant accounts | 3,202 Dormant + 255 Severely Dormant |
-| Hive | 1,550,448 rows external · 1,754-row fraud view · 1,550,432-row mart |
-| MongoDB | 10,000 documents, compound index on `customerId` + `segment` |
-| Neo4j | 499 accounts · 1,554 transactions · 3,108 edges |
-| Fraud rings detected | 157 accounts with >3 distinct inbound senders |
-| Rule performance | 2,786 flagged — 538 true positives, 2,248 false positives |
-
-`docs/FinSight_Report_Updated.pdf` documents every stage with the command run, the code, and
-the terminal output it produced.
-
----
-
-## Known limitations
-
-Stated plainly, because they're the interesting part of the engineering story:
-
-- **The fraud rule's precision is poor.** An 80.69% false-positive rate, worse than the 62%
-  legacy baseline it was meant to beat. The rule keys on the *destination* balance; PaySim
-  fraud characteristically empties the *sender* account. Adding `newbalanceOrig = 0 AND
-  oldbalanceOrg = amount` is the obvious next iteration.
-- **Customer profile join coverage is 2 of 10,000.** The MongoDB profiles were generated
-  independently of PaySim account IDs, so the Customer 360 composite risk score is driven
-  almost entirely by churn probability. Deterministically mapping profiles onto active
-  transacting accounts would fix it.
-- **The churn frequency baseline is degenerate.** With most customers appearing once,
-  `hist_avg_txn_per_12` resolves to the same value for nearly everyone. A minimum-history
-  filter would make that signal meaningful.
-- **Hive ODBC is unavailable** — the metastore runs embedded Derby, so the Alteryx workflow
-  reads an exported CSV rather than querying the mart directly. HiveServer2 would resolve it.
-- **Dashboards use import mode**, not DirectQuery.
-
----
-
-## Credentials
-
-Nothing is committed. The Neo4j loader reads from the environment:
+### Step 6: Run batch analytics
 
 ```bash
-export NEO4J_PASSWORD='<your password>'
+spark-submit code/spark/risk_scoring.py
+spark-submit code/spark/clv_scoring.py
+
+spark-submit code/spark/spark_sql_jobs.py \
+  --mode compliance
+
+spark-submit code/spark/spark_sql_jobs.py \
+  --mode customer_summary
+
+spark-submit code/spark/spark_sql_jobs.py \
+  --mode dormancy
 ```
+
+### Step 7: Load database objects
+
+```bash
+spark-sql -f code/sql/hive_ddl.sql
+spark-sql -f code/sql/fraud_view.sql
+```
+
+Load the customer profiles into MongoDB:
+
+```bash
+mongoimport \
+  --db finsight \
+  --collection customers \
+  --file data/novacrest_customers.json \
+  --jsonArray
+```
+
+Configure Neo4j credentials through an environment variable before running the graph loader:
+
+```bash
+export NEO4J_PASSWORD='<your-password>'
+python code/neo4j/neo4j_loader.py
+```
+
+Never commit real credentials or replace the placeholder with a real password in this README.
+
+### Step 8: Open the reporting assets
+
+- Alteryx workflows: `alteryx/`
+- Power BI report assets: `docs/`
+- Dashboard screenshots: `images/`
+
+The PDF files in `docs/` are report/documentation assets; confirm the location of the actual `.pbix` report file before describing it as included and directly openable.
+
+## 8. Results and Validation
+
+The following figures are reported in the existing project documentation. They describe the recorded project runs, not independently reproduced results from a fresh installation.
+
+| Metric | Reported result |
+|---|---:|
+| Producer throughput | Approximately 999.8 messages/sec for 50K records |
+| Producer throughput | Approximately 989.7 messages/sec for 200K records |
+| Streaming run | 200,000 records consumed |
+| Streaming output | 989 flagged records |
+| HDFS landing | Parquet across 154 step partitions |
+| Hive external table | 1,550,448 rows |
+| Fraud view | 1,754 rows |
+| MongoDB customer profiles | 10,000 documents |
+| Neo4j graph | 499 accounts and 1,554 transactions |
+| Graph relationships | 3,108 edges |
+| Fraud-ring query output | 157 accounts meeting the documented query condition |
+
+For implementation details and recorded terminal outputs, see `docs/FinSight_Report_Updated.pdf`.
+
+### Validation before relying on results
+
+- Confirm the input file row count and schema.
+- Verify Kafka topic creation and consumption.
+- Check Spark job completion and output counts.
+- Confirm HDFS partitions and Hive query results.
+- Check MongoDB document counts and indexes.
+- Validate Neo4j nodes, relationships, and query results.
+- Recalculate fraud precision, recall, and false-positive rate against ground-truth labels.
+- Check that Power BI measures match their source data.
+
+## 9. Known Limitations and Future Improvements
+
+The original implementation documents the following limitations.
+
+### Fraud-rule precision
+
+The rule-based approach reported an 80.69% false-positive rate, compared with a 62% legacy baseline cited in the project documentation.
+
+A potential next experiment is to evaluate sender-balance features alongside destination-balance features. Any improvement should be measured against labelled data using precision, recall, false-positive rate, and an appropriate validation split.
+
+### Customer profile joins
+
+Only 2 of the 10,000 customer profiles matched the transaction identifiers in the documented run. The profiles and transaction identifiers were generated independently.
+
+A future improvement is to generate a deterministic mapping between synthetic profiles and transacting accounts, then validate join coverage and the resulting Customer 360 metrics.
+
+### Churn frequency baseline
+
+The transaction dataset contains limited repeated activity for most origin accounts. This constrains the usefulness of frequency-based behavioural signals.
+
+A future iteration could introduce a minimum-history requirement and evaluate signals using data with more repeated customer activity.
+
+### Data integration
+
+The existing documentation states that Hive ODBC was unavailable in the tested environment, so an exported CSV was used by the Alteryx workflow instead of querying the mart directly.
+
+Configuring HiveServer2 and validating the ODBC connection would allow the integration path to be tested more directly.
+
+### Power BI connectivity
+
+The existing dashboards use Import mode rather than DirectQuery. A future iteration could evaluate refresh workflows or alternative connectivity modes where supported by the data source and deployment environment.
+
+### Additional engineering improvements
+
+- Add automated unit and integration tests.
+- Add data-quality checks and schema validation.
+- Centralize configuration and document dependency versions.
+- Add pipeline failure handling, retries, and structured logging.
+- Automate deployment and reproducibility checks.
+- Evaluate fraud rules on separate validation data before making performance claims.
+
+## 10. Repository Structure, Security, and Contact
+
+### Repository structure
+
+```text
+finsight-data-platform/
+├── alteryx/       # Alteryx workflows and outputs
+├── code/          # Python, Spark, SQL, and graph-processing code
+├── data/          # Customer profiles and Neo4j CSV assets
+├── docs/          # Project reports and documentation
+├── images/        # Dashboard screenshots
+├── .gitignore
+└── README.md
+```
+
+The repository may contain additional nested files; consult the current GitHub tree for the complete listing.
+
+### Security and data handling
+
+- Do not commit passwords, API keys, personal credentials, or private configuration.
+- Keep large datasets out of Git unless their licensing and repository size are appropriate.
+- Use synthetic data for demonstrations.
+- Store local secrets in environment variables or an untracked local configuration file.
+- Review third-party dataset and software licenses before redistributing them.
+
+### License
+
+A license has not yet been added to this repository. Until one is selected and committed, do not assume that others have permission to reuse, modify, or redistribute the project code.
+
+### Author
+
+**Venkata Pramod**
+
+Email: [pramodvchalla@gmail.com](mailto:pramodvchalla@gmail.com)
+
+GitHub: [venkatapramod](https://github.com/venkatapramod)
 
 ---
 
-**Venkata Pramod** · [pramodvchalla@gmail.com](mailto:pramodvchalla@gmail.com)
+*FinSight is an educational data engineering and analytics portfolio project. It is not a production banking system, and its fraud flags and risk scores should not be used to make real financial decisions.*

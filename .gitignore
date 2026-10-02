@@ -24,3 +24,7 @@ spark-warehouse/
 *.yxdb
 ~$*
 *.orig
+# Local environment variables and secrets
+.env
+.env.*
+!.env.example

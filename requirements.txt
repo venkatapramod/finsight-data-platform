@@ -1,0 +1,5 @@
+# Python dependencies used by FinSight
+pyspark
+kafka-python
+pymongo
+neo4j
