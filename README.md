@@ -34,7 +34,7 @@ FinSight demonstrates a data platform that combines transaction streaming, distr
 - HDFS data lake storage using Parquet.
 - Spark Structured Streaming for fraud flagging and churn signals.
 - Spark batch processing for risk and customer lifetime value (CLV) scoring.
-- Hive tables and SQL-based reporting.
+- Hive-compatible tables and SQL-based reporting through Spark SQL.
 - MongoDB customer profile storage.
 - Neo4j graph modelling for relationship analysis.
 - Alteryx workflows for data blending.
@@ -42,19 +42,20 @@ FinSight demonstrates a data platform that combines transaction streaming, distr
 
 ## 3. Technology Stack
 
-| Layer | Technology | Purpose |
-|---|---|---|
-| Streaming ingestion | Apache Kafka | Transaction event ingestion and topic-based routing |
-| Distributed storage | HDFS | Data lake storage |
-| File format | Apache Parquet | Structured, partitioned data storage |
-| Stream processing | Spark Structured Streaming | Fraud flagging and churn signals |
-| Batch processing | Apache Spark | Risk and CLV scoring |
-| SQL analytics | Spark SQL | Compliance, customer summary, and dormancy reports |
-| Data warehouse | Apache Hive | External tables, fraud views, and summary outputs |
-| Document database | MongoDB | Customer KYC profiles |
-| Graph database | Neo4j | Account and transaction relationships |
-| Data blending | Alteryx | Integration and transformation workflows |
-| Business intelligence | Power BI | Interactive dashboards |
+| Layer | Technology | Version tested | Purpose |
+|---|---|---|---|
+| Streaming ingestion | Apache Kafka (KRaft mode) | 3.7.2 | Transaction event ingestion and topic-based routing |
+| Distributed storage | HDFS | Hadoop 3.3.6 | Data lake storage |
+| File format | Apache Parquet | — | Structured, partitioned data storage |
+| Stream processing | Spark Structured Streaming | Spark 3.5.7 | Fraud flagging and churn signals |
+| Batch processing | Apache Spark | 3.5.7 | Risk and CLV scoring |
+| SQL analytics | Spark SQL | 3.5.7 | Compliance, customer summary, and dormancy reports |
+| Data warehouse | Hive tables via Spark's metastore | — | External tables, fraud views, and summary outputs |
+| Document database | MongoDB | — | Customer KYC profiles |
+| Graph database | Neo4j | — | Account and transaction relationships |
+| Data blending | Alteryx | — | Integration and transformation workflows |
+| Business intelligence | Power BI | — | Interactive dashboards |
+| Language | Python | 3.10 | Producer, loaders, and Spark jobs |
 
 ## 4. Architecture and Data Flow
 
@@ -93,8 +94,6 @@ FinSight demonstrates a data platform that combines transaction streaming, distr
        Three Dashboards
 ```
 
-The diagram represents the intended platform flow. Exact integrations and execution requirements should be checked against the scripts and service configuration before reproducing the environment.
-
 ## 5. Dashboard Screenshots
 
 ### Fraud Alert Board
@@ -123,7 +122,7 @@ The dashboards are based on the project outputs and should be interpreted in lig
 
 The primary transaction dataset follows the PaySim synthetic financial transaction schema. The full transaction CSV is not included in this repository.
 
-| Property | Reported value |
+| Property | Value |
 |---|---|
 | Rows | 1,550,448 |
 | Columns | 11 |
@@ -134,32 +133,24 @@ The primary transaction dataset follows the PaySim synthetic financial transacti
 
 The dataset contains transaction types, amounts, origin and destination identifiers, account balances, and fraud labels.
 
-To reproduce the transaction-processing stages, obtain a compatible PaySim-format dataset from its authorized distribution source and place it at:
-
-`data/Transactions.csv`
-
-Confirm the file's schema and the right to use and redistribute it before running the pipeline.
+To reproduce the transaction-processing stages, obtain a compatible PaySim-format dataset from its authorized distribution source and place it at `data/Transactions.csv` (or set the `TRANSACTIONS_CSV` environment variable to its path). Confirm the file's schema and the right to use it before running the pipeline.
 
 ### Customer profiles
 
-`data/novacrest_customers.json` contains synthetic customer profile records used in the MongoDB component.
-
-The profiles include fields such as customer ID, segment, products, KYC status, risk score, churn probability, and preferred channel.
+`data/novacrest_customers.json` contains 10,000 synthetic customer profile records used in the MongoDB component. The profiles include fields such as customer ID, segment, products, KYC status, risk score, churn probability, and preferred channel.
 
 ### Neo4j graph data
 
 The `data/` directory contains CSV files for graph nodes and relationships:
 
-- `neo4j_accounts_nodes.csv`
-- `neo4j_transaction_nodes.csv`
-- `neo4j_sent_rels.csv`
-- `neo4j_received_rels.csv`
-
-The graph represents accounts connected through transactions, allowing relationship-based analysis.
+- `neo4j_accounts_nodes.csv` — 499 accounts
+- `neo4j_transaction_nodes.csv` — 1,554 transactions
+- `neo4j_sent_rels.csv` — 1,554 relationships
+- `neo4j_received_rels.csv` — 1,554 relationships
 
 ### Data quality considerations
 
-The transaction labels are highly imbalanced, and most origin account identifiers appear only once. The synthetic customer profiles were generated independently of the transaction account identifiers.
+The transaction labels are highly imbalanced, and most origin account identifiers appear only once (1,549,889 distinct senders across 1,550,448 transactions). The synthetic customer profiles were generated independently of the transaction account identifiers.
 
 Consequently, customer joins and behaviour-based signals have important limitations. These issues should be considered when interpreting fraud, churn, and customer risk outputs.
 
@@ -167,19 +158,33 @@ Consequently, customer joins and behaviour-based signals have important limitati
 
 ### Prerequisites
 
-The existing project documentation identifies the following environment components:
-
 - Python 3.10 or later
-- Hadoop 3.x and HDFS
-- Apache Kafka
-- Apache Spark 3.5.x
-- Hive metastore
+- Hadoop 3.x with HDFS
+- Apache Kafka 3.x (KRaft mode)
+- Apache Spark 3.5.x, with the Kafka connector JARs (`spark-sql-kafka-0-10_2.12`, `spark-token-provider-kafka-0-10_2.12`, `kafka-clients`) in `$SPARK_HOME/jars`, or passed with `--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.7`
 - MongoDB
 - Neo4j
-- Alteryx for the supplied workflows
-- Power BI Desktop for the supplied report
+- Alteryx and Power BI Desktop for the supplied workflows and report
 
-The components may require separate configuration. Exact compatibility, Kafka connector dependencies, environment variables, and service startup order must be verified for your installation.
+Install the Python dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+### Environment notes
+
+These issues came up when reproducing the pipeline and are worth checking first:
+
+- **Hive metastore compatibility.** Spark 3.5's built-in Hive client supports metastore versions up to 3.1. It cannot talk to a Hive 4.x metastore service (`Invalid method name: 'get_table'`). Use Spark's embedded metastore instead, for example in `$SPARK_HOME/conf/spark-defaults.conf`:
+
+  ```text
+  spark.hadoop.hive.metastore.uris
+  spark.hadoop.javax.jdo.option.ConnectionURL  jdbc:derby:;databaseName=/path/to/spark_metastore_db;create=true
+  ```
+
+- **Kafka storage location.** Kafka's default KRaft `log.dirs` is under `/tmp`, which is cleared on restart (including WSL restarts). Point `log.dirs` in `config/kraft/server.properties` to a persistent folder before formatting storage.
+- **Credentials.** Copy `.env.example` and set values locally. Scripts read secrets such as `NEO4J_PASSWORD` from environment variables; nothing is hardcoded.
 
 ### Step 1: Clone the repository
 
@@ -190,56 +195,60 @@ cd finsight-data-platform
 
 ### Step 2: Prepare the transaction data
 
-Obtain the compatible transaction CSV and place it at:
+Place the transaction CSV at `data/Transactions.csv`, or:
 
-```text
-data/Transactions.csv
+```bash
+export TRANSACTIONS_CSV=/path/to/Transactions.csv
 ```
 
-The full transaction file is intentionally not included in the repository.
+### Step 3: Start the services
 
-### Step 3: Configure the services
+```bash
+start-dfs.sh                                  # HDFS
+hdfs dfsadmin -safemode wait
 
-Start and configure the required Kafka, Hadoop/HDFS, Spark, Hive, MongoDB, and Neo4j services.
+cd $KAFKA_HOME                                # Kafka (first run only: format storage)
+bin/kafka-storage.sh format -t $(bin/kafka-storage.sh random-uuid) -c config/kraft/server.properties
+bin/kafka-server-start.sh config/kraft/server.properties
 
-Ensure that the configured addresses, ports, credentials, and data paths match those expected by the project scripts.
+sudo systemctl start mongod                   # MongoDB
+sudo neo4j start                              # Neo4j
+```
 
 ### Step 4: Create Kafka topics
 
-The documented ingestion design uses `txn-raw`, `txn-flagged`, and `txn-churn`.
-
 ```bash
-kafka-topics.sh --create \
-  --topic txn-raw \
-  --partitions 3 \
-  --replication-factor 1 \
-  --bootstrap-server localhost:9092
+for t in txn-raw txn-flagged txn-churn; do
+  kafka-topics.sh --create --if-not-exists --topic $t \
+    --partitions 3 --replication-factor 1 \
+    --bootstrap-server localhost:9092
+done
 ```
 
-Create the other topics using the same approach, checking first whether they already exist.
+### Step 5: Run streaming and ingestion
 
-### Step 5: Run processing jobs
-
-The following commands are drawn from the original project documentation. Verify each script path, its arguments, and required connector JARs before execution.
+`fraud_streaming.py` reads from the latest offset, so start it **before** the producer:
 
 ```bash
-# Transaction ingestion
-python code/kafka/producer.py --quiet
+# Terminal A: streaming fraud scoring (txn-raw -> txn-flagged)
+spark-submit code/spark/fraud_streaming.py
 
-# Batch data loading
+# Terminal B: publish transactions (default rate 1,000 msg/sec)
+python3 code/kafka/producer.py --max-records 200000 --quiet
+```
+
+Count the flagged events once streaming has caught up:
+
+```bash
+kafka-get-offsets.sh --bootstrap-server localhost:9092 --topic txn-flagged
+```
+
+Other jobs:
+
+```bash
 spark-submit code/spark/load_transactions.py
-
-# Streaming fraud processing
-spark-submit --jars <kafka-jars> \
-  code/spark/fraud_streaming.py
-
-# Customer baseline
-spark-submit \
-  code/spark/compute_customer_baseline.py
-
-# Churn processing
-spark-submit --jars <kafka-jars> \
-  code/spark/churn_streaming.py
+spark-submit code/spark/compute_customer_baseline.py
+spark-submit code/spark/churn_streaming.py
 ```
 
 ### Step 6: Run batch analytics
@@ -247,70 +256,62 @@ spark-submit --jars <kafka-jars> \
 ```bash
 spark-submit code/spark/risk_scoring.py
 spark-submit code/spark/clv_scoring.py
-
-spark-submit code/spark/spark_sql_jobs.py \
-  --mode compliance
-
-spark-submit code/spark/spark_sql_jobs.py \
-  --mode customer_summary
-
-spark-submit code/spark/spark_sql_jobs.py \
-  --mode dormancy
+spark-submit code/spark/spark_sql_jobs.py --mode compliance
+spark-submit code/spark/spark_sql_jobs.py --mode customer_summary
+spark-submit code/spark/spark_sql_jobs.py --mode dormancy
 ```
 
 ### Step 7: Load database objects
 
 ```bash
-spark-sql -f code/sql/hive_ddl.sql
+spark-sql -f code/sql/hive_ddl.sql            # creates finsight db, external table, repairs partitions
 spark-sql -f code/sql/fraud_view.sql
 ```
 
 Load the customer profiles into MongoDB:
 
 ```bash
-mongoimport \
-  --db finsight \
-  --collection customers \
-  --file data/novacrest_customers.json \
-  --jsonArray
+mongoimport --db finsight --collection customers \
+  --file data/novacrest_customers.json --jsonArray
 ```
 
-Configure Neo4j credentials through an environment variable before running the graph loader:
+Load the Neo4j graph:
 
 ```bash
 export NEO4J_PASSWORD='<your-password>'
-python code/neo4j/neo4j_loader.py
+python3 code/neo4j/neo4j_loader.py
 ```
 
-Never commit real credentials or replace the placeholder with a real password in this README.
+Optionally, load MongoDB fraud alerts into Neo4j (safe to rerun; relationships are merged on the alert ID):
+
+```bash
+python3 code/extra/mongodb/mongo_to_neo4j.py
+```
 
 ### Step 8: Open the reporting assets
 
 - Alteryx workflows: `alteryx/`
-- Power BI report assets: `docs/`
+- Report and documentation: `docs/`
 - Dashboard screenshots: `images/`
-
-The PDF files in `docs/` are report/documentation assets; confirm the location of the actual `.pbix` report file before describing it as included and directly openable.
 
 ## 8. Results and Validation
 
-The following figures are reported in the existing project documentation. They describe the recorded project runs, not independently reproduced results from a fresh installation.
+The table separates figures **reproduced** from the stored pipeline outputs (October 2026) from figures **reported** in the original project run (see `docs/FinSight_Report_Updated.pdf`).
 
-| Metric | Reported result |
-|---|---:|
-| Producer throughput | Approximately 999.8 messages/sec for 50K records |
-| Producer throughput | Approximately 989.7 messages/sec for 200K records |
-| Streaming run | 200,000 records consumed |
-| Streaming output | 989 flagged records |
-| HDFS landing | Parquet across 154 step partitions |
-| Hive external table | 1,550,448 rows |
-| Fraud view | 1,754 rows |
-| MongoDB customer profiles | 10,000 documents |
-| Neo4j graph | 499 accounts and 1,554 transactions |
-| Graph relationships | 3,108 edges |
-| Fraud-ring query output | 157 accounts meeting the documented query condition |
+| Metric | Result | Status |
+|---|---:|---|
+| Transactions in CSV, HDFS Parquet and Hive external table | 1,550,448 rows | Reproduced |
+| HDFS landing | 154 `step` partitions | Reproduced |
+| Hive fraud view (`isFraud = 1`) | 1,754 rows | Reproduced |
+| Streaming run: records consumed from `txn-raw` | 200,000 | Reproduced |
+| Streaming run: events flagged to `txn-flagged` | 989 | Reproduced |
+| Producer throughput (200K records) | 1,000.0 msg/sec over 200.01 s | Reproduced |
+| Producer throughput (50K records) | ~999.8 msg/sec | Reported |
+| MongoDB customer profiles | 10,000 documents | Reproduced |
+| Neo4j graph input | 499 accounts, 1,554 transactions, 3,108 relationships | Reproduced (loader CSVs) |
+| Fraud-ring query output | 157 accounts | Reported |
 
-For implementation details and recorded terminal outputs, see `docs/FinSight_Report_Updated.pdf`.
+**About throughput:** the producer is rate-limited (`--rate`, default 1,000 msg/sec). The throughput figures show that the pipeline sustained the target rate; they are not a measure of Kafka's maximum capacity.
 
 ### Validation before relying on results
 
@@ -324,8 +325,6 @@ For implementation details and recorded terminal outputs, see `docs/FinSight_Rep
 - Check that Power BI measures match their source data.
 
 ## 9. Known Limitations and Future Improvements
-
-The original implementation documents the following limitations.
 
 ### Fraud-rule precision
 
@@ -341,19 +340,15 @@ A future improvement is to generate a deterministic mapping between synthetic pr
 
 ### Churn frequency baseline
 
-The transaction dataset contains limited repeated activity for most origin accounts. This constrains the usefulness of frequency-based behavioural signals.
-
-A future iteration could introduce a minimum-history requirement and evaluate signals using data with more repeated customer activity.
+The transaction dataset contains limited repeated activity for most origin accounts, which constrains frequency-based behavioural signals. Churn outputs from different runs also differ (12 alerts in the stored Parquet output, 60 in the CSV export), so churn counts are not presented as headline results.
 
 ### Data integration
 
-The existing documentation states that Hive ODBC was unavailable in the tested environment, so an exported CSV was used by the Alteryx workflow instead of querying the mart directly.
-
-Configuring HiveServer2 and validating the ODBC connection would allow the integration path to be tested more directly.
+Hive ODBC was unavailable in the tested environment, so an exported CSV was used by the Alteryx workflow instead of querying the mart directly. Configuring HiveServer2 (or the Spark Thrift Server) and validating the ODBC connection would allow the integration path to be tested more directly.
 
 ### Power BI connectivity
 
-The existing dashboards use Import mode rather than DirectQuery. A future iteration could evaluate refresh workflows or alternative connectivity modes where supported by the data source and deployment environment.
+The dashboards use Import mode rather than DirectQuery. A future iteration could evaluate refresh workflows or alternative connectivity modes.
 
 ### Additional engineering improvements
 
@@ -371,23 +366,25 @@ The existing dashboards use Import mode rather than DirectQuery. A future iterat
 ```text
 finsight-data-platform/
 ├── alteryx/       # Alteryx workflows and outputs
-├── code/          # Python, Spark, SQL, and graph-processing code
+├── code/          # Kafka producer, Spark jobs, SQL, and graph loaders
 ├── data/          # Customer profiles and Neo4j CSV assets
 ├── docs/          # Project reports and documentation
 ├── images/        # Dashboard screenshots
-├── .gitignore
+├── .env.example
+├── requirements.txt
+├── CONTRIBUTING.md
+├── SECURITY.md
 └── README.md
 ```
-
-The repository may contain additional nested files; consult the current GitHub tree for the complete listing.
 
 ### Security and data handling
 
 - Do not commit passwords, API keys, personal credentials, or private configuration.
 - Keep large datasets out of Git unless their licensing and repository size are appropriate.
-- Use synthetic data for demonstrations.
 - Store local secrets in environment variables or an untracked local configuration file.
 - Review third-party dataset and software licenses before redistributing them.
+
+See `SECURITY.md` for reporting security issues.
 
 ### License
 
