@@ -1,0 +1,26 @@
+# Dataset — 121 MB, exceeds GitHub's limit (see README)
+data/Transactions.csv
+data/*.bak
+
+# Generated outputs
+logs/
+exports/
+*.parquet
+*.crc
+_SUCCESS
+
+# Python
+__pycache__/
+*.pyc
+*-venv/
+venv/
+
+# Spark / Hive local state
+metastore_db/
+derby.log
+spark-warehouse/
+
+# Office / Alteryx temp
+*.yxdb
+~$*
+*.orig

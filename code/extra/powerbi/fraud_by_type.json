@@ -1,0 +1,4 @@
+{"type":"TRANSFER","transaction_count":24,"total_amount":1.048342846E7,"fraud_count":1,"fraud_amount":181.0}
+{"type":"CASH_OUT","transaction_count":10,"total_amount":786817.16,"fraud_count":1,"fraud_amount":181.0}
+{"type":"PAYMENT","transaction_count":55,"total_amount":306207.56,"fraud_count":0,"fraud_amount":0.0}
+{"type":"DEBIT","transaction_count":10,"total_amount":59900.74,"fraud_count":0,"fraud_amount":0.0}

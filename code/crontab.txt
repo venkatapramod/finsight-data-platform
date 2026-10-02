@@ -1,0 +1,2 @@
+0 22 * * * /home/pramo/spark/bin/spark-submit /home/pramo/finsight/spark/risk_scoring.py >> /home/pramo/finsight/logs/risk_scoring.log 2>&1
+30 22 * * * /home/pramo/spark/bin/spark-submit /home/pramo/finsight/spark/clv_scoring.py >> /home/pramo/finsight/logs/clv_scoring.log 2>&1
