@@ -1,5 +1,6 @@
 # Python dependencies used by FinSight
-pyspark
+pyspark==3.5.7
 kafka-python
 pymongo
 neo4j
+pytest
