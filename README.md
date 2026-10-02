@@ -296,7 +296,7 @@ python3 code/extra/mongodb/mongo_to_neo4j.py
 
 ## 8. Results and Validation
 
-The table separates figures **reproduced** from the stored pipeline outputs (October 2026) from figures **reported** in the original project run (see `docs/FinSight_Report_Updated.pdf`).
+The table separates figures **reproduced** from the stored pipeline outputs (October 2026) from figures **reported** in the original project run (see the [project report (PDF)](https://github.com/venkatapramod/finsight-data-platform/raw/main/docs/FinSight_Report_Updated.pdf)).
 
 | Metric | Result | Status |
 |---|---:|---|
