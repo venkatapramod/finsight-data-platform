@@ -1,3 +1,4 @@
+import os
 import csv
 import json
 import time
@@ -9,7 +10,7 @@ KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
 KAFKA_TOPIC = "txn-raw"
 
 # Input dataset
-CSV_FILE = "/home/pramo/finsight/data/Transactions.csv"
+CSV_FILE = os.environ.get("TRANSACTIONS_CSV", "data/Transactions.csv")
 
 parser = argparse.ArgumentParser(description="FinSight PaySim Kafka producer")
 parser.add_argument("--max-records", type=int, default=0,
