@@ -1,3 +1,5 @@
+CREATE DATABASE IF NOT EXISTS finsight;
+
 USE finsight;
 
 DROP TABLE IF EXISTS finsight.transactions;
