@@ -1,5 +1,7 @@
 # FinSight — Banking Data Engineering & Fraud Analytics Platform
 
+[![tests](https://github.com/venkatapramod/finsight-data-platform/actions/workflows/tests.yml/badge.svg)](https://github.com/venkatapramod/finsight-data-platform/actions/workflows/tests.yml)
+
 An end-to-end big data engineering project for **NovaCrest Bank**, integrating streaming ingestion, distributed storage, batch and stream processing, multiple database paradigms, data blending, and business intelligence.
 
 FinSight explores four banking use cases:
@@ -21,8 +23,8 @@ FinSight demonstrates a data platform that combines transaction streaming, distr
 
 | Use case | Implementation |
 |---|---|
-| Transaction fraud detection | Kafka ingestion and Spark Structured Streaming rule-based scoring |
-| Customer 360 | Customer profiles, risk and churn outputs, and Power BI reporting |
+| Transaction fraud detection | Kafka ingestion and Spark Structured Streaming scoring, with rules evaluated against labelled data |
+| Customer 360 | Customer–account crosswalk joining 10,000 profiles to transaction history, plus Power BI reporting |
 | Compliance reporting | Spark SQL aggregations and reporting outputs |
 | Fraud-ring analysis | Neo4j account–transaction graph and Cypher queries |
 
@@ -39,6 +41,9 @@ FinSight demonstrates a data platform that combines transaction streaming, distr
 - Neo4j graph modelling for relationship analysis.
 - Alteryx workflows for data blending.
 - Power BI dashboards for fraud alerts, customer analytics, and risk reporting.
+- Fraud-rule evaluation on a time-based tune/test split (precision, recall, false discovery rate, false-positive rate).
+- Unit tests (pytest), data-quality checks, and CI on every push (GitHub Actions).
+- Docker Compose for Kafka, MongoDB and Neo4j, with a Makefile for common tasks.
 
 ## 3. Technology Stack
 
@@ -56,6 +61,8 @@ FinSight demonstrates a data platform that combines transaction streaming, distr
 | Data blending | Alteryx | — | Integration and transformation workflows |
 | Business intelligence | Power BI | — | Interactive dashboards |
 | Language | Python | 3.10 | Producer, loaders, and Spark jobs |
+| Testing and CI | pytest, GitHub Actions | — | Unit tests and data-quality checks on every push |
+| Local services | Docker Compose | — | Kafka, MongoDB and Neo4j in one command |
 
 ## 4. Architecture and Data Flow
 
@@ -150,11 +157,24 @@ The `data/` directory contains CSV files for graph nodes and relationships:
 
 ### Data quality considerations
 
-The transaction labels are highly imbalanced, and most origin account identifiers appear only once (1,549,889 distinct senders across 1,550,448 transactions). The synthetic customer profiles were generated independently of the transaction account identifiers.
+The transaction labels are highly imbalanced, and most origin account identifiers appear only once (1,549,889 distinct senders across 1,550,448 transactions).
 
-Consequently, customer joins and behaviour-based signals have important limitations. These issues should be considered when interpreting fraud, churn, and customer risk outputs.
+The synthetic customer profiles were generated independently of the transaction account identifiers, so they never matched (2 of 10,000 by coincidence). `code/spark/build_customer_360.py` fixes this with a customer → account crosswalk, the standard banking pattern: accounts are ranked by total activity (sent and received) and paired deterministically with profiles. The mapping is synthetic, so Customer 360 metrics demonstrate the pipeline rather than real customer behaviour.
+
+`code/quality/check_transactions.py` validates schema, row counts, nulls, transaction types, value ranges and label validity, and exits non-zero on failure so it can gate a pipeline run.
 
 ## 7. Setup and Execution
+
+### Quick start
+
+```bash
+cp .env.example .env          # set NEO4J_PASSWORD (8+ characters)
+make up                       # Kafka, MongoDB, Neo4j via Docker Compose; topics + profiles loaded
+pip install -r requirements.txt
+make test                     # unit tests, no services needed
+```
+
+`make help` lists the other targets (`quality`, `evaluate`, `customer360`, `stream`, `produce`, `flagged`). Spark and HDFS run outside Docker; the manual setup below covers them.
 
 ### Prerequisites
 
@@ -166,7 +186,7 @@ Consequently, customer joins and behaviour-based signals have important limitati
 - Neo4j
 - Alteryx and Power BI Desktop for the supplied workflows and report
 
-Install the Python dependencies:
+Install the Python dependencies (`pyspark` is pinned to 3.5.7 to match Spark; a different PySpark version fails with `'JavaPackage' object is not callable`):
 
 ```bash
 pip install -r requirements.txt
@@ -268,6 +288,12 @@ spark-sql -f code/sql/hive_ddl.sql            # creates finsight db, external ta
 spark-sql -f code/sql/fraud_view.sql
 ```
 
+Build the Customer 360 table (customer → account crosswalk plus activity):
+
+```bash
+spark-submit code/spark/build_customer_360.py
+```
+
 Load the customer profiles into MongoDB:
 
 ```bash
@@ -288,7 +314,15 @@ Optionally, load MongoDB fraud alerts into Neo4j (safe to rerun; relationships a
 python3 code/extra/mongodb/mongo_to_neo4j.py
 ```
 
-### Step 8: Open the reporting assets
+### Step 8: Tests and checks
+
+```bash
+python3 -m pytest                                                        # unit tests
+FINSIGHT_EXPECTED_ROWS=1550448 spark-submit code/quality/check_transactions.py   # data quality
+spark-submit code/spark/evaluate_fraud_rules.py                          # fraud-rule evaluation
+```
+
+### Step 9: Open the reporting assets
 
 - Alteryx workflows: `alteryx/`
 - Report and documentation: `docs/`
@@ -304,14 +338,28 @@ The table separates figures **reproduced** from the stored pipeline outputs (Oct
 | HDFS landing | 154 `step` partitions | Reproduced |
 | Hive fraud view (`isFraud = 1`) | 1,754 rows | Reproduced |
 | Streaming run: records consumed from `txn-raw` | 200,000 | Reproduced |
-| Streaming run: events flagged to `txn-flagged` | 989 | Reproduced |
+| Streaming run: events flagged to `txn-flagged` (v1 rule) | 989 | Reproduced |
 | Producer throughput (200K records) | 1,000.0 msg/sec over 200.01 s | Reproduced |
 | Producer throughput (50K records) | ~999.8 msg/sec | Reported |
 | MongoDB customer profiles | 10,000 documents | Reproduced |
 | Neo4j graph input | 499 accounts, 1,554 transactions, 3,108 relationships | Reproduced (loader CSVs) |
 | Fraud-ring query output | 157 accounts | Reported |
+| Customer profiles joined to transaction history | 10,000 of 10,000 (was 2) | Reproduced |
+| Transactions per mapped customer | min 21, avg 27.9, max 98 | Reproduced |
+| Mapped customers involved in fraud | 172 | Reproduced |
 
 **About throughput:** the producer is rate-limited (`--rate`, default 1,000 msg/sec). The throughput figures show that the pipeline sustained the target rate; they are not a measure of Kafka's maximum capacity.
+
+### Fraud-rule evaluation
+
+Rules are scored against the PaySim fraud labels with `code/spark/evaluate_fraud_rules.py`, using a time-based split: steps 1–100 to choose a rule, steps 101–154 held out for reporting.
+
+| Rule | Logic | Test precision | Test recall | Test FPR |
+|---|---|---:|---:|---:|
+| v1 (original) | TRANSFER/CASH_OUT, amount > 200,000, receiver's new balance = 0 | 40.79% | 32.98% | 0.06% |
+| **v2 (current)** | TRANSFER/CASH_OUT that moves the sender's entire opening balance | **100.00%** | **99.47%** | **0.00%** |
+
+v2 uses only the amount and the sender's opening balance, both known when a transaction is authorised; v1 relied on a post-transaction balance. Its near-perfect score reflects how PaySim generates fraud (fraud agents empty the victim's account), so it should not be read as real-world performance. The rule lives in `code/spark/fraud_rules.py`, shared by the streaming job, the evaluation script and the tests.
 
 ### Validation before relying on results
 
@@ -328,15 +376,13 @@ The table separates figures **reproduced** from the stored pipeline outputs (Oct
 
 ### Fraud-rule precision
 
-The rule-based approach reported an 80.69% false-positive rate, compared with a 62% legacy baseline cited in the project documentation.
+The original project reported an "80.69% false-positive rate" for the v1 rule. That figure is the share of *alerts* that were false (the false discovery rate); the true false-positive rate, measured against all legitimate transactions, was well under 1%.
 
-A potential next experiment is to evaluate sender-balance features alongside destination-balance features. Any improvement should be measured against labelled data using precision, recall, false-positive rate, and an appropriate validation split.
+The v1 rule's low precision (15% on the tune split, 41% on the test split) was addressed by evaluating sender-balance features against the labels; see *Fraud-rule evaluation* above. Because PaySim fraud follows a single pattern, a production system would need a richer feature set and model, validated on real data.
 
 ### Customer profile joins
 
-Only 2 of the 10,000 customer profiles matched the transaction identifiers in the documented run. The profiles and transaction identifiers were generated independently.
-
-A future improvement is to generate a deterministic mapping between synthetic profiles and transacting accounts, then validate join coverage and the resulting Customer 360 metrics.
+Only 2 of the 10,000 customer profiles originally matched the transaction identifiers, because the two datasets were generated independently. This is now handled by the customer → account crosswalk described in *Data quality considerations*, which joins all 10,000 profiles. The pairing is synthetic, so behavioural metrics show the pipeline working, not real customer behaviour.
 
 ### Churn frequency baseline
 
@@ -352,12 +398,14 @@ The dashboards use Import mode rather than DirectQuery. A future iteration could
 
 ### Additional engineering improvements
 
-- Add automated unit and integration tests.
-- Add data-quality checks and schema validation.
-- Centralize configuration and document dependency versions.
+Done: unit tests and CI, data-quality checks, fraud-rule evaluation on held-out data, pinned dependency versions, and Docker Compose for the supporting services.
+
+Next:
+
+- Orchestrate the batch jobs with Airflow instead of cron.
+- Add integration tests that run against the Compose services.
+- Containerise Spark and HDFS for a fully one-command environment.
 - Add pipeline failure handling, retries, and structured logging.
-- Automate deployment and reproducibility checks.
-- Evaluate fraud rules on separate validation data before making performance claims.
 
 ## 10. Repository Structure, Security, and Contact
 
@@ -366,14 +414,19 @@ The dashboards use Import mode rather than DirectQuery. A future iteration could
 ```text
 finsight-data-platform/
 ├── alteryx/       # Alteryx workflows and outputs
-├── code/          # Kafka producer, Spark jobs, SQL, and graph loaders
+├── code/          # Kafka producer, Spark jobs, SQL, quality checks, and graph loaders
 ├── data/          # Customer profiles and Neo4j CSV assets
 ├── docs/          # Project reports and documentation
 ├── images/        # Dashboard screenshots
+├── tests/         # pytest unit tests
+├── .github/       # CI workflow
+├── docker-compose.yml
+├── Makefile
 ├── .env.example
 ├── requirements.txt
 ├── CONTRIBUTING.md
 ├── SECURITY.md
+├── LICENSE
 └── README.md
 ```
 
@@ -388,7 +441,7 @@ See `SECURITY.md` for reporting security issues.
 
 ### License
 
-A license has not yet been added to this repository. Until one is selected and committed, do not assume that others have permission to reuse, modify, or redistribute the project code.
+This project is released under the [MIT License](LICENSE).
 
 ### Author
 
